@@ -162,9 +162,10 @@ BEGIN
     v_result := p_template;
 
     -- Remove table header for this field
+    -- Use [^<]* instead of .*? because PostgreSQL regex doesn't support non-greedy matching
     v_result := regexp_replace(
         v_result,
-        '<th[^>]*data-field="' || p_field_name || '"[^>]*>.*?</th>',
+        '<th[^>]*data-field="' || p_field_name || '"[^>]*>[^<]*</th>',
         '',
         'g'
     );
