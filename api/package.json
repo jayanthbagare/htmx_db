@@ -1,0 +1,30 @@
+{
+  "name": "htmx-db-api",
+  "version": "1.0.0",
+  "description": "Minimal Fastify API for HTMX Database-First Architecture",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "fastify": "^4.25.0",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/static": "^7.0.0",
+    "@fastify/formbody": "^7.4.0",
+    "@fastify/cookie": "^9.2.0",
+    "dotenv": "^16.3.1",
+    "pino-pretty": "^10.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "happyveggie",
+  "license": "MIT"
+}

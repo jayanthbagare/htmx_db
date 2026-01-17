@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTMX Database System</title>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Font Awesome (icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body hx-boost="true">
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- App Shell -->
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">
+                    <i class="fa fa-database"></i>
+                    <span>HTMX DB</span>
+                </h1>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="nav-menu" hx-get="/ui/nav" hx-trigger="load" hx-swap="innerHTML">
+                <div class="loading">Loading...</div>
+            </nav>
+
+            <!-- User Info -->
+            <div class="sidebar-footer">
+                <div class="user-info" hx-get="/auth/me" hx-trigger="load" hx-swap="innerHTML">
+                    <div class="loading">...</div>
+                </div>
+                <button class="btn btn-text btn-logout"
+                        hx-post="/auth/logout"
+                        hx-confirm="Are you sure you want to logout?">
+                    <i class="fa fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <button class="btn btn-icon sidebar-toggle" onclick="toggleSidebar()">
+                    <i class="fa fa-bars"></i>
+                </button>
+
+                <div class="breadcrumb" id="breadcrumb">
+                    <span>Dashboard</span>
+                </div>
+
+                <div class="top-actions">
+                    <!-- Demo user selector (dev only) -->
+                    <div id="demo-user-selector" class="demo-user-selector"></div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div id="main-content" class="content-area"
+                 hx-get="/ui/dashboard"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="loading-container">
+                    <div class="spinner"></div>
+                    <p>Loading...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Container -->
+    <div id="modal" class="modal-backdrop" onclick="closeModalOnBackdrop(event)">
+        <!-- Modal content will be loaded here via HTMX -->
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Toggle sidebar on mobile
+        function toggleSidebar() {
+            document.querySelector('.app-container').classList.toggle('sidebar-collapsed');
+        }
+
+        // Close modal when clicking backdrop
+        function closeModalOnBackdrop(event) {
+            if (event.target.classList.contains('modal-backdrop')) {
+                closeModal();
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            const modal = document.getElementById('modal');
+            modal.innerHTML = '';
+            modal.classList.remove('active');
+        }
+
+        // Show modal
+        function showModal() {
+            document.getElementById('modal').classList.add('active');
+        }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <span class="toast-message">${message}</span>
+                <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+            `;
+            container.appendChild(toast);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // HTMX event handlers
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            // Show modal if content was loaded into modal
+            if (event.detail.target.id === 'modal' && event.detail.target.innerHTML.trim()) {
+                showModal();
+            }
+        });
+
+        // Handle custom triggers from server
+        document.body.addEventListener('showToast', function(event) {
+            showToast(event.detail.message, event.detail.type);
+        });
+
+        // Handle HX-Trigger header for toasts
+        document.body.addEventListener('htmx:afterRequest', function(event) {
+            const triggerHeader = event.detail.xhr.getResponseHeader('HX-Trigger');
+            if (triggerHeader) {
+                try {
+                    const triggers = JSON.parse(triggerHeader);
+                    if (triggers.showToast) {
+                        showToast(triggers.showToast.message, triggers.showToast.type);
+                    }
+                } catch (e) {
+                    console.error('Error parsing HX-Trigger:', e);
+                }
+            }
+        });
+
+        // Update breadcrumb on navigation
+        document.body.addEventListener('htmx:pushedIntoHistory', function(event) {
+            const path = event.detail.path;
+            updateBreadcrumb(path);
+        });
+
+        function updateBreadcrumb(path) {
+            const breadcrumb = document.getElementById('breadcrumb');
+            const parts = path.split('/').filter(p => p && p !== 'ui');
+
+            if (parts.length === 0) {
+                breadcrumb.innerHTML = '<span>Dashboard</span>';
+                return;
+            }
+
+            const crumbs = parts.map((part, index) => {
+                const label = part.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                return `<span>${label}</span>`;
+            });
+
+            breadcrumb.innerHTML = crumbs.join(' <i class="fa fa-chevron-right"></i> ');
+        }
+
+        // Load demo user selector in development
+        fetch('/auth/demo-users')
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && data.users) {
+                    const selector = document.getElementById('demo-user-selector');
+                    selector.innerHTML = `
+                        <select onchange="switchDemoUser(this.value)" class="form-select form-select-sm">
+                            ${data.users.map(u => `
+                                <option value="${u.key}">${u.role}</option>
+                            `).join('')}
+                        </select>
+                    `;
+                }
+            })
+            .catch(() => {});
+
+        function switchDemoUser(user) {
+            fetch('/auth/switch-demo-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user })
+            }).then(() => location.reload());
+        }
+    </script>
+</body>
+</html>
