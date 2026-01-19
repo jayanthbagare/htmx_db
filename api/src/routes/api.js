@@ -8,6 +8,77 @@ import { getUserId } from '../middleware/auth.js';
 import { errors } from '../middleware/errorHandler.js';
 
 /**
+ * Valid entity types - prevents arbitrary entity access
+ */
+const VALID_ENTITIES = [
+  'supplier',
+  'purchase_order',
+  'goods_receipt',
+  'invoice_receipt',
+  'payment'
+];
+
+/**
+ * Updatable fields per entity - prevents mass assignment attacks
+ */
+const UPDATABLE_FIELDS = {
+  supplier: ['supplier_name', 'contact_name', 'email', 'phone', 'address', 'city', 'country', 'payment_terms_days', 'is_active', 'notes'],
+  purchase_order: ['expected_delivery_date', 'notes'],
+  goods_receipt: ['notes'],
+  invoice_receipt: ['notes'],
+  payment: ['reference_number', 'notes']
+};
+
+/**
+ * HTML escape function to prevent XSS
+ */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  const s = String(str);
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+  return s.replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Validate entity type
+ */
+function validateEntity(entity) {
+  if (!VALID_ENTITIES.includes(entity)) {
+    throw errors.badRequest(`Invalid entity type`);
+  }
+}
+
+/**
+ * Validate UUID format
+ */
+function isValidUUID(str) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
+ * Filter updates to only allowed fields (mass assignment protection)
+ */
+function filterUpdates(entity, updates) {
+  const allowedFields = UPDATABLE_FIELDS[entity] || [];
+  const filtered = {};
+
+  for (const field of allowedFields) {
+    if (field in updates) {
+      filtered[field] = updates[field];
+    }
+  }
+
+  return filtered;
+}
+
+/**
  * Helper to handle database function results
  * Returns HTMX-friendly response for success/failure
  */
@@ -18,13 +89,13 @@ function handleResult(result, reply, successMessage = null) {
     const message = successMessage || result.message || 'Operation completed successfully';
 
     if (isHtmx) {
-      // Return success toast/notification
+      // Return success toast/notification - escape message to prevent XSS
       reply
         .header('Content-Type', 'text/html; charset=utf-8')
         .header('HX-Trigger', JSON.stringify({
-          showToast: { message, type: 'success' }
+          showToast: { message: escapeHtml(message), type: 'success' }
         }))
-        .send(`<div class="success-message">${message}</div>`);
+        .send(`<div class="success-message">${escapeHtml(message)}</div>`);
     } else {
       reply.send(result);
     }
@@ -32,13 +103,14 @@ function handleResult(result, reply, successMessage = null) {
     const message = getErrorMessage(result);
 
     if (isHtmx) {
+      // Escape error message to prevent XSS from database errors
       reply
         .code(400)
         .header('Content-Type', 'text/html; charset=utf-8')
         .header('HX-Trigger', JSON.stringify({
-          showToast: { message, type: 'error' }
+          showToast: { message: escapeHtml(message), type: 'error' }
         }))
-        .send(`<div class="error-message">${message}</div>`);
+        .send(`<div class="error-message">${escapeHtml(message)}</div>`);
     } else {
       reply.code(400).send({ error: message });
     }

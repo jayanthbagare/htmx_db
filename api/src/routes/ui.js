@@ -8,6 +8,50 @@ import { getUserId } from '../middleware/auth.js';
 import { errors } from '../middleware/errorHandler.js';
 
 /**
+ * Valid entity types - prevents arbitrary entity access
+ */
+const VALID_ENTITIES = [
+  'supplier',
+  'purchase_order',
+  'goods_receipt',
+  'invoice_receipt',
+  'payment'
+];
+
+/**
+ * HTML escape function to prevent XSS
+ */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  const s = String(str);
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  };
+  return s.replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Validate entity type
+ */
+function validateEntity(entity) {
+  if (!VALID_ENTITIES.includes(entity)) {
+    throw errors.badRequest(`Invalid entity type: ${entity}`);
+  }
+}
+
+/**
+ * Validate UUID format
+ */
+function isValidUUID(str) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
  * Parse filter parameters from query string
  * Converts URL params to JSONB filter format
  */
@@ -39,6 +83,7 @@ export default async function uiRoutes(fastify) {
    */
   fastify.get('/:entity/list', async (request, reply) => {
     const { entity } = request.params;
+    validateEntity(entity);
     const userId = getUserId(request);
 
     if (!userId) {
@@ -80,6 +125,7 @@ export default async function uiRoutes(fastify) {
    */
   fastify.get('/:entity/list/table', async (request, reply) => {
     const { entity } = request.params;
+    validateEntity(entity);
     const userId = getUserId(request);
 
     if (!userId) {
@@ -121,6 +167,7 @@ export default async function uiRoutes(fastify) {
    */
   fastify.get('/:entity/form/create', async (request, reply) => {
     const { entity } = request.params;
+    validateEntity(entity);
     const userId = getUserId(request);
 
     if (!userId) {
@@ -151,6 +198,7 @@ export default async function uiRoutes(fastify) {
   fastify.get('/:entity/form/edit', async (request, reply) => {
     const { entity } = request.params;
     const { id } = request.query;
+    validateEntity(entity);
     const userId = getUserId(request);
 
     if (!userId) {
@@ -159,6 +207,10 @@ export default async function uiRoutes(fastify) {
 
     if (!id) {
       throw errors.badRequest('Record ID is required');
+    }
+
+    if (!isValidUUID(id)) {
+      throw errors.badRequest('Invalid record ID format');
     }
 
     try {
@@ -185,6 +237,7 @@ export default async function uiRoutes(fastify) {
   fastify.get('/:entity/form/view', async (request, reply) => {
     const { entity } = request.params;
     const { id } = request.query;
+    validateEntity(entity);
     const userId = getUserId(request);
 
     if (!userId) {
@@ -193,6 +246,10 @@ export default async function uiRoutes(fastify) {
 
     if (!id) {
       throw errors.badRequest('Record ID is required');
+    }
+
+    if (!isValidUUID(id)) {
+      throw errors.badRequest('Invalid record ID format');
     }
 
     try {
@@ -218,11 +275,17 @@ export default async function uiRoutes(fastify) {
    */
   fastify.get('/:entity/lookup/:field', async (request, reply) => {
     const { entity, field } = request.params;
+    validateEntity(entity);
     const { search = null, limit = 50 } = request.query;
     const userId = getUserId(request);
 
     if (!userId) {
       throw errors.unauthorized('Authentication required');
+    }
+
+    // Validate field name (alphanumeric and underscores only)
+    if (!/^[a-z_][a-z0-9_]*$/i.test(field)) {
+      throw errors.badRequest('Invalid field name');
     }
 
     try {
@@ -234,9 +297,9 @@ export default async function uiRoutes(fastify) {
         p_limit: parseInt(limit, 10)
       });
 
-      // Return as HTML options for HTMX
-      const html = options.map(opt =>
-        `<option value="${opt.id}">${opt.label}</option>`
+      // Return as HTML options for HTMX - escape values to prevent XSS
+      const html = (options || []).map(opt =>
+        `<option value="${escapeHtml(opt.id)}">${escapeHtml(opt.label)}</option>`
       ).join('\n');
 
       reply
